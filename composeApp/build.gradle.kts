@@ -27,6 +27,9 @@ kotlin {
 
             implementation(libs.androidx.navigation.compose)
             implementation(libs.kotlinx.serialization.json)
+            implementation("io.methvin:directory-watcher:0.18.0")
+            implementation("org.slf4j:slf4j-api:2.0.17")
+            implementation("org.slf4j:slf4j-simple:2.0.17")
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

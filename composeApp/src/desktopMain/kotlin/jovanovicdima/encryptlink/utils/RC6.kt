@@ -2,7 +2,7 @@ package jovanovicdima.encryptlink.utils
 
 import kotlin.math.log2
 
-class RC6 {
+class RC6(private val key: ByteArray) {
     companion object {
         private const val W = 32 // Word size in bits
         private const val R = 20 // Number of rounds
@@ -15,14 +15,14 @@ class RC6 {
 
     private var s = IntArray(2 * R + 4) // Key schedule array
 
-    fun init(key: ByteArray) {
+    init {
         if (key.size != B) {
             throw IllegalArgumentException("Key must be exactly $B bytes (128 bits)")
         }
-        keySchedule(key)
+        keySchedule()
     }
 
-    private fun keySchedule(key: ByteArray) {
+    private fun keySchedule() {
         val l = IntArray(B / 4)
         for (i in l.indices) {
             l[i] = (key[4 * i].toInt() and 0xFF) or
@@ -185,30 +185,4 @@ class RC6 {
         bytes[offset + 2] = ((value shr 16) and 0xFF).toByte()
         bytes[offset + 3] = ((value shr 24) and 0xFF).toByte()
     }
-}
-
-fun main() {
-    val key = byteArrayOf(
-        0x01, 0x23, 0x45, 0x67, 0x89.toByte(), 0xAB.toByte(), 0xCD.toByte(), 0xEF.toByte(),
-        0xFE.toByte(), 0xDC.toByte(), 0xBA.toByte(), 0x98.toByte(), 0x76, 0x54, 0x32, 0x10
-    )
-
-    val iv = byteArrayOf(
-        0x12, 0x34, 0x56, 0x78, 0x9A.toByte(), 0xBC.toByte(), 0xDE.toByte(), 0xF0.toByte(),
-        0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88.toByte()
-    )
-
-    val plaintext = "Hello, RC6 with OFB mode!".toByteArray()
-
-    val rc6 = RC6()
-    rc6.init(key)
-
-    val ciphertext = rc6.encrypt(plaintext, iv)
-    println("Plaintext: ${plaintext.decodeToString()}")
-    println("Ciphertext (hex): ${ciphertext.joinToString("") { "%02x".format(it) }}")
-
-    val decrypted = rc6.decrypt(ciphertext, iv)
-    println("Decrypted: ${decrypted.decodeToString()}")
-
-    println("Decryption successful: ${plaintext.contentEquals(decrypted)}")
 }
