@@ -177,6 +177,7 @@ fun MainScreen(
                 Text(
                     text = when (selectedAlgorithm) {
                         EncryptionAlgorithm.RC6 -> "Key (16 characters)"
+                        EncryptionAlgorithm.Bifid -> "Key (default: \"ABCDEFGHIKLMNOPQRSTUVWXYZ\")"
                         else -> "Key"
                     }, style = MaterialTheme.typography.bodyMedium
                 )
@@ -191,7 +192,13 @@ fun MainScreen(
                     modifier = Modifier.fillMaxWidth(),
                     value = ivRC6 ?: "",
                     onValueChange = { ivRC6 = it },
-                    label = { Text(text = "IV for RC6 (16 characters)", style = MaterialTheme.typography.bodyMedium) })
+                    label = { Text(text = "IV for RC6 (16 characters)", style = MaterialTheme.typography.bodyMedium) },
+                    colors = TextFieldDefaults.colors().copy(
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                    ),
+                    textStyle = MaterialTheme.typography.bodyMedium
+                )
             }
 
             Box(
@@ -226,11 +233,11 @@ fun MainScreen(
 
             Box(
                 modifier = Modifier.fillMaxWidth().pointerHoverIcon(PointerIcon.Hand, true).clickable {
-                    val diag = FileDialog(Frame(), "")
-                    diag.isVisible = true
-                    val filename = diag.file
-                    val directory = diag.directory
-                    diag.dispose()
+                    val fileDialog = FileDialog(Frame(), "")
+                    fileDialog.isVisible = true
+                    val filename = fileDialog.file
+                    val directory = fileDialog.directory
+                    fileDialog.dispose()
 
                     if (filename != null && directory != null) {
                         selectedFilePath = "$directory/$filename"
@@ -373,7 +380,26 @@ fun MainScreen(
 
                             if (!isFileSystemWatcherActive) {
                                 fileSystemWatcher.startWatching(inputFolderPath!!) { path ->
-                                    println(path)
+                                    try {
+                                        println(path.toString())
+                                        if (selectedAlgorithm == EncryptionAlgorithm.Bifid) {
+                                            encryptFileBifid(
+                                                outputFolderPath = outputFolderPath!!,
+                                                encryptionFilePath = path.toString(),
+                                                key = key
+                                            )
+                                        } else if (selectedAlgorithm == EncryptionAlgorithm.RC6) {
+                                            encryptFileRC6(
+                                                outputFolderPath = outputFolderPath!!,
+                                                encryptionFilePath = path.toString(),
+                                                key = key,
+                                                iv = ivRC6!!
+                                            )
+                                        }
+                                    } catch (e: Exception) {
+                                        errorMessage = e.message ?: "Unknown error"
+                                        showErrorDialog = true
+                                    }
                                 }
                             } else {
                                 fileSystemWatcher.stopWatching()
