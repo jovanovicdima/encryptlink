@@ -22,14 +22,12 @@ kotlin {
             implementation(compose.ui)
             implementation(compose.components.resources)
             implementation(compose.components.uiToolingPreview)
-            implementation(libs.androidx.lifecycle.viewmodel)
             implementation(libs.androidx.lifecycle.runtimeCompose)
 
-            implementation(libs.androidx.navigation.compose)
             implementation(libs.kotlinx.serialization.json)
-            implementation("io.methvin:directory-watcher:0.18.0")
-            implementation("org.slf4j:slf4j-api:2.0.17")
-            implementation("org.slf4j:slf4j-simple:2.0.17")
+            implementation(libs.directorywatcher)
+            implementation(libs.slf4j.api)
+            implementation(libs.slf4j.simple)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

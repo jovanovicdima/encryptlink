@@ -23,7 +23,6 @@ class Bifid {
         }
     }
 
-    // Create 5x5 Polybius square from key
     private val square: Array<CharArray>
     private val charToCoords: MutableMap<Char, Pair<Int, Int>>
 
@@ -33,7 +32,6 @@ class Bifid {
 
         val result = StringBuilder()
 
-        // Process text in chunks of specified period
         for (i in cleanText.indices step period) {
             val chunk = cleanText.substring(i, minOf(i + period, cleanText.length))
             result.append(encryptChunk(chunk))
@@ -48,7 +46,6 @@ class Bifid {
 
         val result = StringBuilder()
 
-        // Process text in chunks of specified period
         for (i in cleanText.indices step period) {
             val chunk = cleanText.substring(i, minOf(i + period, cleanText.length))
             result.append(decryptChunk(chunk))
@@ -61,17 +58,14 @@ class Bifid {
         val rows = mutableListOf<Int>()
         val cols = mutableListOf<Int>()
 
-        // Extract coordinates for each character
         for (char in chunk) {
             val coords = charToCoords[char] ?: continue
             rows.add(coords.first)
             cols.add(coords.second)
         }
 
-        // Combine coordinates: all rows first, then all columns
         val combined = rows + cols
 
-        // Convert back to characters using coordinate pairs
         val result = StringBuilder()
         for (i in combined.indices step 2) {
             if (i + 1 < combined.size) {
@@ -87,7 +81,6 @@ class Bifid {
     private fun decryptChunk(chunk: String): String {
         val coords = mutableListOf<Int>()
 
-        // Extract coordinates for each character
         for (char in chunk) {
             val charCoords = charToCoords[char] ?: continue
             coords.add(charCoords.first)
@@ -100,7 +93,6 @@ class Bifid {
         val rows = coords.subList(0, halfSize)
         val cols = coords.subList(halfSize, coords.size)
 
-        // Reconstruct original characters
         val result = StringBuilder()
         for (i in rows.indices) {
             if (i < cols.size) {
@@ -122,33 +114,4 @@ class Bifid {
             println()
         }
     }
-}
-
-// Example usage and testing
-fun bifidmain() {
-    // Create cipher with default key
-    val cipher = Bifid("TEST")
-    cipher.printSquare()
-
-    // Test encryption and decryption
-    val plaintext = "HELLO WORLD"
-    println("\nOriginal text: $plaintext")
-
-    val encrypted = cipher.encrypt(plaintext, 5)
-    println("Encrypted: $encrypted")
-
-    val decrypted = cipher.decrypt(encrypted, 5)
-    println("Decrypted: $decrypted")
-
-    println("\n--- Testing with custom key ---")
-
-    // Test with custom key
-    val customCipher = Bifid("KEYWORD")
-    customCipher.printSquare()
-
-    val customEncrypted = customCipher.encrypt("ATTACK AT DAWN", 6)
-    println("\nCustom encrypted: $customEncrypted")
-
-    val customDecrypted = customCipher.decrypt(customEncrypted, 6)
-    println("Custom decrypted: $customDecrypted")
 }

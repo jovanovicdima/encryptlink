@@ -1,4 +1,4 @@
-package jovanovicdima.encryptlink.screens.main
+package jovanovicdima.encryptlink.screens
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.*
@@ -16,10 +16,17 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import jovanovicdima.encryptlink.components.RadioTabs
 import jovanovicdima.encryptlink.data.models.EncryptionAlgorithm
+import jovanovicdima.encryptlink.data.remote.client.TCPClient
+import jovanovicdima.encryptlink.data.remote.server.TCPServer
 import jovanovicdima.encryptlink.utils.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.awt.FileDialog
 import java.awt.Frame
+import java.io.File
 import javax.swing.JFileChooser
 import javax.swing.UIManager
 import javax.swing.filechooser.FileSystemView
@@ -49,11 +56,30 @@ fun MainScreen(
     val isFileSystemWatcherActive: Boolean by fileSystemWatcher.isRunning.collectAsStateWithLifecycle()
     var inputFolderPath: String? by remember { mutableStateOf(null) }
 
-    LaunchedEffect(selectedAlgorithm, key, outputFolderPath, selectedAlgorithm, ivRC6) {
-        isNoError =
-            selectedAlgorithm != null && outputFolderPath != null && (selectedAlgorithm != EncryptionAlgorithm.RC6 || (ivRC6?.length == 16 && key.length == 16))
-    }
+    var selectedTab: String by remember { mutableStateOf("Server") }
 
+    val server: TCPServer = remember { TCPServer() }
+    val isServerRunning: Boolean by server.isRunning.collectAsState()
+    var serverPort: String by remember { mutableStateOf("") }
+    var serverInputFolderPath: String? by remember { mutableStateOf(null) }
+
+    val client: TCPClient = remember { TCPClient() }
+    val isClientConnected: Boolean by client.isConnected.collectAsState()
+    val progress: Float? by client.progress.collectAsState()
+    var isClientSending: Boolean by remember { mutableStateOf(false) }
+
+    var clientTargetHost: String by remember { mutableStateOf("") }
+    var clientTargetPort: String by remember { mutableStateOf("") }
+
+    val coroutineScope: CoroutineScope = rememberCoroutineScope()
+
+    LaunchedEffect(selectedAlgorithm, key, outputFolderPath, ivRC6) {
+        isNoError = selectedAlgorithm != null && outputFolderPath != null && when (selectedAlgorithm) {
+            EncryptionAlgorithm.RC6 -> ivRC6?.length == 16 && key.length == 16
+            EncryptionAlgorithm.Bifid -> true
+            else -> false
+        }
+    }
 
     var showErrorDialog by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
@@ -418,6 +444,316 @@ fun MainScreen(
                         text = if (isFileSystemWatcherActive) "Active" else "Not Active",
                         style = MaterialTheme.typography.bodyMedium,
                     )
+                }
+            }
+        }
+
+        AnimatedVisibility(selectedAlgorithm != null) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(space = 8.dp),
+                modifier = Modifier.fillMaxWidth().background(
+                    color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(20.dp)
+                ).border(
+                    border = BorderStroke(
+                        width = 2.dp, color = MaterialTheme.colorScheme.primary
+                    ), shape = RoundedCornerShape(20.dp)
+                ).padding(12.dp)
+            ) {
+                RadioTabs(
+                    modifier = Modifier.fillMaxWidth(),
+                    tabs = listOf("Server", "Client"),
+                    onTabSelected = {
+                        selectedTab = it
+
+                        if (selectedTab == "Server") {
+                            client.disconnect()
+                        } else if (selectedTab == "Client") {
+                            server.stop()
+                        }
+                    },
+                    selectedTab = selectedTab,
+                    selectedTabTextColor = MaterialTheme.colorScheme.background,
+                )
+
+                if (selectedTab == "Server") {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Box(
+                            modifier = Modifier.fillMaxWidth().pointerHoverIcon(PointerIcon.Hand, true).clickable {
+                                if (isServerRunning) {
+                                    return@clickable
+                                }
+
+                                UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName())
+                                val chooser = JFileChooser(FileSystemView.getFileSystemView())
+                                chooser.fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
+                                chooser.dialogTitle = "Select a Folder"
+                                chooser.isAcceptAllFileFilterUsed = false
+
+                                val result = chooser.showOpenDialog(null)
+                                if (result == JFileChooser.APPROVE_OPTION) {
+                                    serverInputFolderPath = chooser.selectedFile.path
+                                }
+                            }) {
+                            TextField(
+                                value = if (serverInputFolderPath != null) "Output Path: $serverInputFolderPath" else "Select Output Path",
+                                onValueChange = {},
+                                readOnly = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                enabled = false,
+                                colors = TextFieldDefaults.colors().copy(
+                                    disabledContainerColor = Color.Transparent,
+                                    disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                                    disabledIndicatorColor = Color.Transparent,
+                                    disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    disabledTrailingIconColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                ),
+                                textStyle = MaterialTheme.typography.bodyMedium
+
+                            )
+                        }
+
+                        TextField(
+                            modifier = Modifier.fillMaxWidth(),
+                            value = serverPort,
+                            enabled = !isServerRunning,
+                            onValueChange = {
+                                if (it.length > 5) return@TextField
+
+                                val port = it.toIntOrNull()
+                                if (it != "" && port == null) return@TextField
+                                if (port != null && (port > 65535 || port == 0)) return@TextField
+
+                                serverPort = it
+                            },
+                            singleLine = true,
+                            label = {
+                                Text(
+                                    text = "Port", style = MaterialTheme.typography.bodyMedium
+                                )
+                            },
+                            colors = TextFieldDefaults.colors(
+                                focusedTextColor = MaterialTheme.colorScheme.primary,
+                                focusedLabelColor = MaterialTheme.colorScheme.primary,
+                                focusedContainerColor = Color.Transparent,
+                                focusedIndicatorColor = MaterialTheme.colorScheme.primary,
+                                unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                                unfocusedLabelColor = MaterialTheme.colorScheme.onSurface,
+                                unfocusedContainerColor = Color.Transparent,
+                                unfocusedIndicatorColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                disabledContainerColor = Color.Transparent,
+                            ),
+                            textStyle = MaterialTheme.typography.bodyMedium
+                        )
+
+                        Button(
+                            modifier = Modifier.pointerHoverIcon(PointerIcon.Hand, true), onClick = {
+                                try {
+                                    if (isServerRunning) {
+                                        server.stop()
+                                    } else {
+                                        coroutineScope.launch(Dispatchers.IO) {
+                                            server.start(port = serverPort.toInt(), serverInputFolderPath!!)
+                                        }
+                                    }
+                                } catch (e: Exception) {
+                                    errorMessage = e.message ?: "Unknown error"
+                                    showErrorDialog = true
+                                }
+                            }, enabled = serverInputFolderPath != null && serverPort.isNotBlank()
+                        ) {
+                            Text(
+                                text = if (isServerRunning) "Stop Server" else "Start Server",
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
+                    }
+                } else {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        TextField(
+                            modifier = Modifier.fillMaxWidth(),
+                            value = clientTargetHost,
+                            enabled = !isClientConnected,
+                            onValueChange = {
+                                clientTargetHost = it
+                            },
+                            label = {
+                                Text(text = "Host", style = MaterialTheme.typography.bodyMedium)
+                            },
+                            singleLine = true,
+                            colors = TextFieldDefaults.colors(
+                                focusedTextColor = MaterialTheme.colorScheme.primary,
+                                focusedLabelColor = MaterialTheme.colorScheme.primary,
+                                focusedContainerColor = Color.Transparent,
+                                focusedIndicatorColor = MaterialTheme.colorScheme.primary,
+                                unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                                unfocusedLabelColor = MaterialTheme.colorScheme.onSurface,
+                                unfocusedContainerColor = Color.Transparent,
+                                unfocusedIndicatorColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                disabledContainerColor = Color.Transparent,
+                            ),
+                            textStyle = MaterialTheme.typography.bodyMedium
+                        )
+
+                        TextField(
+                            modifier = Modifier.fillMaxWidth(),
+                            value = clientTargetPort,
+                            enabled = !isClientConnected,
+                            onValueChange = {
+                                if (it.length > 5) return@TextField
+
+                                val port = it.toIntOrNull()
+                                if (it != "" && port == null) return@TextField
+                                if (port != null && (port > 65535 || port == 0)) return@TextField
+
+                                clientTargetPort = it
+                            },
+                            label = {
+                                Text(text = "Port", style = MaterialTheme.typography.bodyMedium)
+                            },
+                            singleLine = true,
+                            colors = TextFieldDefaults.colors(
+                                focusedTextColor = MaterialTheme.colorScheme.primary,
+                                focusedLabelColor = MaterialTheme.colorScheme.primary,
+                                focusedContainerColor = Color.Transparent,
+                                focusedIndicatorColor = MaterialTheme.colorScheme.primary,
+                                unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                                unfocusedLabelColor = MaterialTheme.colorScheme.onSurface,
+                                unfocusedContainerColor = Color.Transparent,
+                                unfocusedIndicatorColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                disabledContainerColor = Color.Transparent,
+                            ),
+                            textStyle = MaterialTheme.typography.bodyMedium
+                        )
+
+                        Button(
+                            modifier = Modifier.pointerHoverIcon(PointerIcon.Hand, true), onClick = {
+                                try {
+                                    if (isClientConnected) {
+                                        client.disconnect()
+                                    } else {
+                                        coroutineScope.launch(Dispatchers.IO) {
+                                            client.connect(host = clientTargetHost, port = clientTargetPort.toInt())
+                                        }
+                                    }
+                                } catch (e: Exception) {
+                                    errorMessage = e.message ?: "Unknown error"
+                                    showErrorDialog = true
+                                }
+                            }, enabled = clientTargetPort.isNotBlank() && clientTargetHost.isNotBlank()
+                        ) {
+                            Text(
+                                text = if (isClientConnected) "Disconnect" else "Connect",
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
+                    }
+
+                    AnimatedVisibility(isClientConnected) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            LinearProgressIndicator(
+                                progress = { progress ?: 0f },
+                                modifier = Modifier.fillMaxWidth(),
+                                gapSize = (-15).dp,
+                                drawStopIndicator = {},
+                                trackColor = Color.Gray,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+
+                            Button(
+                                onClick = {
+                                    coroutineScope.launch(Dispatchers.IO) {
+                                        try {
+                                            if (!(selectedAlgorithm != null && (selectedAlgorithm != EncryptionAlgorithm.RC6 || (ivRC6?.length == 16 && key.length == 16)))) {
+                                                throw Exception("Please configure the settings before sending files.")
+                                            }
+
+                                            val diag = FileDialog(Frame(), "")
+                                            diag.isVisible = true
+                                            val filename = diag.file
+                                            val directory = diag.directory
+                                            diag.dispose()
+
+                                            isClientSending = true
+
+                                            if (filename != null && directory != null) {
+                                                val file = File(directory, filename)
+                                                when (selectedAlgorithm) {
+                                                    EncryptionAlgorithm.Bifid -> {
+                                                        if (file.extension != "txt") {
+                                                            throw Exception("Only .txt files are allowed.")
+                                                        }
+
+                                                        val text = file.readText()
+                                                        val encryptedText = encryptDataBifid(
+                                                            data = text, key = key
+                                                        )
+
+                                                        val newFileName =
+                                                            "${file.nameWithoutExtension}-BifidEncrypted.${file.extension}"
+
+                                                        coroutineScope.launch(Dispatchers.IO) {
+                                                            client.sendFile(
+                                                                encryptedText.toByteArray(), newFileName
+                                                            )
+                                                        }
+                                                    }
+
+                                                    EncryptionAlgorithm.RC6 -> {
+                                                        val data = file.readBytes()
+                                                        val encryptedData = encryptDataRC6(
+                                                            data = data, key = key, iv = ivRC6!!.toByteArray()
+                                                        )
+
+                                                        val newFileName =
+                                                            "${file.nameWithoutExtension}-RC6Encrypted.${file.extension}"
+
+                                                        coroutineScope.launch(Dispatchers.IO) {
+                                                            client.sendFile(encryptedData, newFileName, onFinishCallback = {
+                                                                isClientSending = false
+                                                            })
+                                                        }
+                                                    }
+
+                                                    else -> {
+                                                        throw Exception("Please select algorithm")
+                                                    }
+                                                }
+                                            } else {
+                                                println("No file selected")
+                                            }
+                                        } catch (e: Exception) {
+                                            errorMessage = e.message ?: "Unknown error"
+                                            showErrorDialog = true
+                                        }
+                                    }
+                                }, enabled = isClientConnected && progress == null && !isClientSending
+                            ) {
+                                if (progress == null && !isClientSending) {
+                                    Text("Select a file to encrypt and send")
+                                } else {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        color = MaterialTheme.colorScheme.primary,
+                                        trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                                        strokeWidth = 1.5.dp
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

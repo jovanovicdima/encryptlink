@@ -35,18 +35,15 @@ class FileSystemWatcher() {
                             onNewFile(filePath)
                         }
                     }
-                    else -> {
-                        // Ignore MODIFY and DELETE events
-                    }
+                    else -> null
                 }
             }
             .build()
 
-        // Start watching in a coroutine
         _isRunning.update { true }
         watchJob = CoroutineScope(Dispatchers.IO).launch {
             try {
-                watcher?.watchAsync()?.get() // This blocks until stopped
+                watcher?.watchAsync()?.get()
             } catch (e: Exception) {
                 _isRunning.update { false }
                 println("Error in directory watcher: ${e.message}")
@@ -66,33 +63,4 @@ class FileSystemWatcher() {
         }
         _isRunning.update { watchJob?.isActive == true }
     }
-}
-
-fun testfsw(testDir: String) {
-    Files.createDirectories(Paths.get(testDir))
-
-    val watcher = FileSystemWatcher()
-
-    watcher.startWatching(testDir) { newFile ->
-        println(">>> NEW FILE: ${newFile.fileName}")
-        println("    Full path: $newFile")
-
-        try {
-            val size = Files.size(newFile)
-            println("    Size: $size bytes")
-
-            if (newFile.toString().endsWith(".txt")) {
-                val content = Files.readString(newFile)
-                println("    Content preview: ${content.take(100)}...")
-            }
-        } catch (e: Exception) {
-            println("    Error reading file: ${e.message}")
-        }
-    }
-
-    println("Watcher started. Create files in '$testDir' to test.")
-    println("Press Enter to stop...")
-    readLine()
-
-//    watcher.stopWatching()
 }

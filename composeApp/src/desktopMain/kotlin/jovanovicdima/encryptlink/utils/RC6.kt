@@ -62,7 +62,6 @@ class RC6(private val key: ByteArray) {
         var c = bytesToInt(plaintext, 8)
         var d = bytesToInt(plaintext, 12)
 
-        // Pre-whitening
         b += s[0]
         d += s[1]
 
